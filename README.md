@@ -1,36 +1,94 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MailBox - Gmail Clone
 
-## Getting Started
+A responsive Gmail-style web app built with **Next.js**, using **AWS SES** for email delivery, **Firebase** (Auth + Firestore) for data, and **FCM** for push notifications.
 
-First, run the development server:
+## Features
+
+- **Mail** – Inbox, Sent, Drafts, Starred, Scheduled, Trash
+- **Compose** – To/Cc/Bcc, schedule send, save drafts, contact autocomplete
+- **Calendar** – Month view, create/edit/delete events, reminders
+- **Contacts** – Full CRUD, search, quick email from contact
+- **Auth** – Email/password + Google sign-in (Firebase Auth)
+- **Notifications** – FCM push for sent/scheduled emails
+- **Responsive** – Mobile sidebar, split-pane mail on desktop
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Frontend | Next.js 15, React, Tailwind CSS |
+| Auth & DB | Firebase Auth, Firestore |
+| Email | AWS SES |
+| Push | Firebase Cloud Messaging (FCM) |
+
+## Setup
+
+### 1. Clone and install
+
+```bash
+npm install
+cp .env.example .env.local
+```
+
+### 2. Firebase
+
+1. Create a project at [Firebase Console](https://console.firebase.google.com)
+2. Enable **Authentication** (Email/Password + Google)
+3. Create a **Firestore** database
+4. Enable **Cloud Messaging** and generate a Web Push certificate (VAPID key)
+5. Download a service account JSON for Admin SDK
+6. Fill in all `NEXT_PUBLIC_FIREBASE_*` and `FIREBASE_*` vars in `.env.local`
+
+**Firestore indexes** – Create composite indexes for:
+- `emails`: `userId` + `folder` + `createdAt`
+- `scheduled_emails`: `status` + `scheduledAt`
+- `calendar_events`: `userId` + `start`
+- `contacts`: `userId` + `name`
+
+### 3. AWS SES
+
+1. Verify your domain/email in [AWS SES](https://console.aws.amazon.com/ses)
+2. Move out of sandbox for production sending
+3. Create IAM credentials with `ses:SendEmail` permission
+4. Set `AWS_*` and `AWS_SES_FROM_EMAIL` in `.env.local`
+
+### 4. FCM Service Worker
+
+Register the service worker in your app (already configured). Place `icon-192.png` in `/public`.
+
+### 5. Scheduled Email Cron
+
+Call `POST /api/schedule/process` every minute with header:
+
+```
+x-cron-secret: your-cron-secret
+```
+
+Use Vercel Cron, AWS EventBridge, or any scheduler.
+
+### 6. Run
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Project Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+src/
+├── app/
+│   ├── api/          # REST API routes
+│   ├── mail/         # Mail pages
+│   ├── calendar/     # Calendar page
+│   └── contacts/     # Contacts page
+├── components/       # UI components
+├── hooks/            # Data hooks
+├── lib/              # Firebase, SES, FCM
+└── types/            # TypeScript types
+```
 
-## Learn More
+## License
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT
