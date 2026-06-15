@@ -8,6 +8,7 @@ const titles: Record<string, string> = {
   sent: "Sent",
   drafts: "Drafts",
   scheduled: "Scheduled",
+  archive: "Archive",
   trash: "Trash",
 };
 

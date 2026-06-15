@@ -4,10 +4,12 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { Toaster } from "react-hot-toast";
+import toast from "react-hot-toast";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
+
   useEffect(() => {
     if (!loading && !user) {
       router.push("/login");
@@ -30,6 +32,32 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       <Toaster position="bottom-left" />
     </>
   );
+}
+
+export function AdminGuard({ children }: { children: React.ReactNode }) {
+  const { user, loading, isAdmin } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading) {
+      if (!user) {
+        router.push("/login");
+      } else if (!isAdmin) {
+        toast.error("Admin access required");
+        router.push("/mail");
+      }
+    }
+  }, [user, loading, isAdmin, router]);
+
+  if (loading || !user || !isAdmin) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gmail-bg">
+        <div className="animate-spin w-10 h-10 border-2 border-gmail-blue border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  return <>{children}</>;
 }
 
 export function LoginGuard({ children }: { children: React.ReactNode }) {

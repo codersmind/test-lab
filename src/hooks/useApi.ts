@@ -10,10 +10,12 @@ export async function apiFetch(
   const token = await getIdToken();
   if (!token) throw new Error("Not authenticated");
 
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+
   const res = await fetch(path, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       Authorization: `Bearer ${token}`,
       ...options.headers,
     },
@@ -37,5 +39,7 @@ export function useApi() {
     patch: (path: string, body: unknown) =>
       apiFetch(path, { method: "PATCH", body: JSON.stringify(body) }, getIdToken),
     delete: (path: string) => apiFetch(path, { method: "DELETE" }, getIdToken),
+    upload: (path: string, formData: FormData) =>
+      apiFetch(path, { method: "POST", body: formData }, getIdToken),
   };
 }

@@ -5,21 +5,17 @@ import {
   User,
   onAuthStateChanged,
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signInWithPopup,
   signOut,
-  updateProfile,
 } from "firebase/auth";
-import { getFirebaseAuth, googleProvider, isFirebaseConfigured } from "@/lib/firebase/client";
+import { getFirebaseAuth, isFirebaseConfigured } from "@/lib/firebase/client";
 import { requestFCMToken } from "@/lib/fcm/client";
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   configured: boolean;
+  isAdmin: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name: string) => Promise<void>;
-  loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   getIdToken: () => Promise<string | null>;
 }
@@ -41,8 +37,28 @@ async function saveFCMToken(user: User) {
   });
 }
 
+async function verifyProvisionedUser(user: User): Promise<{ ok: boolean; isAdmin: boolean; error?: string }> {
+  const idToken = await user.getIdToken();
+  const res = await fetch("/api/auth/me", {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return {
+      ok: false,
+      isAdmin: false,
+      error: data.error || "Account not authorized",
+    };
+  }
+
+  const data = await res.json();
+  return { ok: true, isAdmin: data.isAdmin === true };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const configured = isFirebaseConfigured();
 
@@ -54,38 +70,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
-      setLoading(false);
-      if (firebaseUser) {
-        saveFCMToken(firebaseUser).catch(() => {});
+      if (!firebaseUser) {
+        setUser(null);
+        setIsAdmin(false);
+        setLoading(false);
+        return;
       }
+
+      const verification = await verifyProvisionedUser(firebaseUser);
+      if (!verification.ok) {
+        await signOut(auth);
+        setUser(null);
+        setIsAdmin(false);
+        setLoading(false);
+        return;
+      }
+
+      setUser(firebaseUser);
+      setIsAdmin(verification.isAdmin);
+      setLoading(false);
+      saveFCMToken(firebaseUser).catch(() => {});
     });
+
     return unsubscribe;
   }, []);
 
   const login = async (email: string, password: string) => {
     const auth = getFirebaseAuth();
     if (!auth) throw new Error("Firebase is not configured");
-    await signInWithEmailAndPassword(auth, email, password);
-  };
 
-  const register = async (email: string, password: string, name: string) => {
-    const auth = getFirebaseAuth();
-    if (!auth) throw new Error("Firebase is not configured");
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
-    await updateProfile(cred.user, { displayName: name });
-  };
+    const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+    const verification = await verifyProvisionedUser(cred.user);
 
-  const loginWithGoogle = async () => {
-    const auth = getFirebaseAuth();
-    if (!auth) throw new Error("Firebase is not configured");
-    await signInWithPopup(auth, googleProvider);
+    if (!verification.ok) {
+      await signOut(auth);
+      throw new Error(
+        verification.error ||
+          "This account was not created by an admin. Contact your administrator."
+      );
+    }
+
+    setUser(cred.user);
+    setIsAdmin(verification.isAdmin);
   };
 
   const logout = async () => {
     const auth = getFirebaseAuth();
     if (!auth) return;
     await signOut(auth);
+    setUser(null);
+    setIsAdmin(false);
   };
 
   const getIdToken = async () => {
@@ -95,7 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, configured, login, register, loginWithGoogle, logout, getIdToken }}
+      value={{ user, loading, configured, isAdmin, login, logout, getIdToken }}
     >
       {children}
     </AuthContext.Provider>

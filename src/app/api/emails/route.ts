@@ -3,6 +3,8 @@ import { verifyAuth } from "@/lib/auth/verify";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { sendEmailViaSES } from "@/lib/aws/ses";
 import { sendPushNotification } from "@/lib/fcm/server";
+import { getSenderForUser } from "@/lib/email/get-sender";
+import { deliverToInternalInboxes } from "@/lib/email/deliver-internal";
 import { v4 as uuidv4 } from "uuid";
 
 export async function GET(request: NextRequest) {
@@ -10,29 +12,66 @@ export async function GET(request: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const folder = request.nextUrl.searchParams.get("folder") || "inbox";
+  const search = request.nextUrl.searchParams.get("search");
+  const cursor = request.nextUrl.searchParams.get("cursor");
+  const limit = Math.min(parseInt(request.nextUrl.searchParams.get("limit") || "50"), 100);
   const db = getAdminDb();
 
-  let snapshot;
+  if (search) {
+    const snapshot = await db
+      .collection("emails")
+      .where("userId", "==", user.uid)
+      .orderBy("createdAt", "desc")
+      .limit(200)
+      .get();
+
+    const q = search.toLowerCase();
+    const emails = snapshot.docs
+      .map((doc) => ({ id: doc.id, ...doc.data() }) as Record<string, unknown> & { id: string })
+      .filter((e) => {
+        const subject = String(e.subject || "").toLowerCase();
+        const from = String(e.from || "").toLowerCase();
+        const body = String(e.body || "").toLowerCase();
+        const to = Array.isArray(e.to) ? e.to : [];
+        return (
+          subject.includes(q) ||
+          from.includes(q) ||
+          body.includes(q) ||
+          to.some((t) => String(t).toLowerCase().includes(q))
+        );
+      })
+      .slice(0, limit);
+
+    return NextResponse.json({ emails });
+  }
+
+  let query;
   if (folder === "starred") {
-    snapshot = await db
+    query = db
       .collection("emails")
       .where("userId", "==", user.uid)
       .where("starred", "==", true)
-      .orderBy("createdAt", "desc")
-      .limit(50)
-      .get();
+      .orderBy("createdAt", "desc");
   } else {
-    snapshot = await db
+    query = db
       .collection("emails")
       .where("userId", "==", user.uid)
       .where("folder", "==", folder)
-      .orderBy("createdAt", "desc")
-      .limit(50)
-      .get();
+      .orderBy("createdAt", "desc");
   }
 
+  if (cursor) {
+    const cursorDoc = await db.collection("emails").doc(cursor).get();
+    if (cursorDoc.exists) {
+      query = query.startAfter(cursorDoc);
+    }
+  }
+
+  const snapshot = await query.limit(limit).get();
   const emails = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  return NextResponse.json({ emails });
+  const nextCursor = emails.length === limit ? emails[emails.length - 1].id : null;
+
+  return NextResponse.json({ emails, nextCursor });
 }
 
 export async function POST(request: NextRequest) {
@@ -40,28 +79,46 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
-  const { to, cc, bcc, subject, body: emailBody, scheduledAt, draftId } = body;
+  const {
+    to, cc, bcc, subject, body: emailBody, scheduledAt, draftId,
+    threadId, inReplyTo, references, attachments = [],
+  } = body;
   const db = getAdminDb();
   const now = new Date().toISOString();
-  const fromEmail = user.email || process.env.AWS_SES_FROM_EMAIL || "";
+
+  let sender;
+  try {
+    sender = await getSenderForUser({ uid: user.uid, email: user.email, name: user.name });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Invalid sender";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+
+  const settingsDoc = await db.collection("user_settings").doc(user.uid).get();
+  const signature = settingsDoc.data()?.signature || "";
+  const finalBody = signature
+    ? `${emailBody}<br><br>--<br>${signature.replace(/\n/g, "<br>")}`
+    : emailBody;
+
+  const fromEmail = sender.email;
+  const fromName = sender.name;
+  const resolvedThreadId = threadId || uuidv4();
 
   if (scheduledAt && new Date(scheduledAt) > new Date()) {
     const emailId = draftId || uuidv4();
     const emailData = {
       userId: user.uid,
       from: fromEmail,
-      to,
-      cc: cc || [],
-      bcc: bcc || [],
-      subject,
-      body: emailBody,
+      fromName,
+      to, cc: cc || [], bcc: bcc || [],
+      subject, body: finalBody,
       folder: "scheduled",
-      read: true,
-      starred: false,
-      labels: [],
-      scheduledAt,
-      createdAt: now,
-      updatedAt: now,
+      read: true, starred: false, labels: [],
+      threadId: resolvedThreadId,
+      inReplyTo: inReplyTo || null,
+      references: references || null,
+      attachments,
+      scheduledAt, createdAt: now, updatedAt: now,
     };
 
     if (draftId) {
@@ -71,25 +128,23 @@ export async function POST(request: NextRequest) {
     }
 
     await db.collection("scheduled_emails").doc(emailId).set({
-      userId: user.uid,
-      emailId,
-      scheduledAt,
-      status: "pending",
-      createdAt: now,
+      userId: user.uid, emailId, scheduledAt, status: "pending", createdAt: now,
     });
 
-    return NextResponse.json({ id: emailId, scheduled: true });
+    return NextResponse.json({ id: emailId, scheduled: true, from: fromEmail });
   }
 
+  let mimeMessageId: string | undefined;
   try {
-    await sendEmailViaSES({
-      from: fromEmail,
-      to,
-      cc,
-      bcc,
+    const result = await sendEmailViaSES({
+      sender, to, cc, bcc,
       subject,
-      html: emailBody,
+      html: finalBody,
+      inReplyTo,
+      references,
+      attachments,
     });
+    mimeMessageId = result.mimeMessageId;
   } catch (error) {
     const message = error instanceof Error ? error.message : "SES send failed";
     return NextResponse.json({ error: message }, { status: 500 });
@@ -99,18 +154,17 @@ export async function POST(request: NextRequest) {
   const sentEmail = {
     userId: user.uid,
     from: fromEmail,
-    to,
-    cc: cc || [],
-    bcc: bcc || [],
-    subject,
-    body: emailBody,
+    fromName,
+    to, cc: cc || [], bcc: bcc || [],
+    subject, body: finalBody,
     folder: "sent",
-    read: true,
-    starred: false,
-    labels: [],
-    sentAt: now,
-    createdAt: now,
-    updatedAt: now,
+    read: true, starred: false, labels: [],
+    threadId: resolvedThreadId,
+    messageId: mimeMessageId,
+    inReplyTo: inReplyTo || null,
+    references: references || null,
+    attachments,
+    sentAt: now, createdAt: now, updatedAt: now,
   };
 
   if (draftId) {
@@ -119,34 +173,25 @@ export async function POST(request: NextRequest) {
     await db.collection("emails").doc(emailId).set(sentEmail);
   }
 
-  for (const recipient of to) {
-    const inboxId = uuidv4();
-    await db.collection("emails").doc(inboxId).set({
-      userId: recipient,
-      from: fromEmail,
-      to,
-      cc: cc || [],
-      subject,
-      body: emailBody,
-      folder: "inbox",
-      read: false,
-      starred: false,
-      labels: [],
-      sentAt: now,
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
+  await deliverToInternalInboxes({
+    fromEmail, fromName, to,
+    cc: cc || [],
+    subject, body: finalBody, sentAt: now,
+    threadId: resolvedThreadId,
+    messageId: mimeMessageId || emailId,
+    inReplyTo, references,
+    attachments,
+  });
 
   const userDoc = await db.collection("users").doc(user.uid).get();
   const fcmToken = userDoc.data()?.fcmToken;
   if (fcmToken) {
     await sendPushNotification(fcmToken, {
       title: "Email sent",
-      body: `Your email "${subject}" was sent successfully`,
+      body: `Your email "${subject}" was sent from ${fromEmail}`,
       data: { url: "/mail/sent" },
     }).catch(() => {});
   }
 
-  return NextResponse.json({ id: emailId, sent: true });
+  return NextResponse.json({ id: emailId, sent: true, from: fromEmail, threadId: resolvedThreadId });
 }

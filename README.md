@@ -8,78 +8,55 @@ A responsive Gmail-style web app built with **Next.js**, using **AWS SES** for e
 - **Compose** – To/Cc/Bcc, schedule send, save drafts, contact autocomplete
 - **Calendar** – Month view, create/edit/delete events, reminders
 - **Contacts** – Full CRUD, search, quick email from contact
-- **Auth** – Email/password + Google sign-in (Firebase Auth)
-- **Notifications** – FCM push for sent/scheduled emails
+- **Auth** – Admin-provisioned accounts only (`some@mydomain.com`); no public sign-up
+- **Admin panel** – Create users, reset passwords, enable/disable accounts
+- **Inbound mail** – Receive from Gmail/external senders into inbox (AWS SES + S3 + SNS)
 - **Responsive** – Mobile sidebar, split-pane mail on desktop
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | Next.js 15, React, Tailwind CSS |
+| Frontend | Next.js 16, React, Tailwind CSS |
 | Auth & DB | Firebase Auth, Firestore |
 | Email | AWS SES |
 | Push | Firebase Cloud Messaging (FCM) |
 
-## Setup
-
-### 1. Clone and install
+## Quick start
 
 ```bash
 npm install
 cp .env.example .env.local
-```
-
-### 2. Firebase
-
-1. Create a project at [Firebase Console](https://console.firebase.google.com)
-2. Enable **Authentication** (Email/Password + Google)
-3. Create a **Firestore** database
-4. Enable **Cloud Messaging** and generate a Web Push certificate (VAPID key)
-5. Download a service account JSON for Admin SDK
-6. Fill in all `NEXT_PUBLIC_FIREBASE_*` and `FIREBASE_*` vars in `.env.local`
-
-**Firestore indexes** – Create composite indexes for:
-- `emails`: `userId` + `folder` + `createdAt`
-- `scheduled_emails`: `status` + `scheduledAt`
-- `calendar_events`: `userId` + `start`
-- `contacts`: `userId` + `name`
-
-### 3. AWS SES
-
-1. Verify your domain/email in [AWS SES](https://console.aws.amazon.com/ses)
-2. Move out of sandbox for production sending
-3. Create IAM credentials with `ses:SendEmail` permission
-4. Set `AWS_*` and `AWS_SES_FROM_EMAIL` in `.env.local`
-
-### 4. FCM Service Worker
-
-Register the service worker in your app (already configured). Place `icon-192.png` in `/public`.
-
-### 5. Scheduled Email Cron
-
-Call `POST /api/schedule/process` every minute with header:
-
-```
-x-cron-secret: your-cron-secret
-```
-
-Use Vercel Cron, AWS EventBridge, or any scheduler.
-
-### 6. Run
-
-```bash
+# Fill in .env.local — see full guide below
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000)
 
-## Project Structure
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| **[Full Setup Guide](docs/SETUP.md)** | Complete step-by-step: Firebase, SES, FCM, admin, deploy |
+| **[Gmail Parity](docs/GMAIL-PARITY.md)** | What's like Gmail vs what's still missing |
+| **[Architecture](docs/ARCHITECTURE.md)** | System design, data model, API flows |
+
+### Setup summary
+
+1. Configure [Firebase](docs/SETUP.md#5-firebase-setup) (Auth, Firestore, FCM, Admin SDK)
+2. Configure [AWS SES](docs/SETUP.md#8-aws-ses-email-sending) for sending mail
+3. Set [environment variables](docs/SETUP.md#4-environment-variables) in `.env.local`
+4. [Bootstrap first admin](docs/SETUP.md#72--bootstrap-first-admin)
+5. Create users at `/admin` and share credentials
+6. [Deploy](docs/SETUP.md#12-deploy-to-production) to Vercel or your host
+
+## Project structure
 
 ```
 src/
 ├── app/
 │   ├── api/          # REST API routes
+│   ├── admin/        # User management (admin only)
 │   ├── mail/         # Mail pages
 │   ├── calendar/     # Calendar page
 │   └── contacts/     # Contacts page
@@ -87,6 +64,9 @@ src/
 ├── hooks/            # Data hooks
 ├── lib/              # Firebase, SES, FCM
 └── types/            # TypeScript types
+docs/
+├── SETUP.md          # Full setup guide
+└── ARCHITECTURE.md   # Technical architecture
 ```
 
 ## License

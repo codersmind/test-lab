@@ -8,7 +8,7 @@ import type { Contact } from "@/types";
 
 export function ContactsView() {
   const { contacts, loading, addContact, updateContact, removeContact } = useContacts();
-  const { setComposeOpen } = useUIStore();
+  const { openCompose } = useUIStore();
   const [search, setSearch] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Contact | null>(null);
@@ -132,7 +132,7 @@ export function ContactsView() {
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={() => {
-                          setComposeOpen(true);
+                          openCompose({ mode: "new", to: contact.email });
                         }}
                         className="p-2 rounded-full hover:bg-white"
                         title="Send email"

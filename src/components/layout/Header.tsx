@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Search, LogOut, Settings } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
@@ -21,9 +22,7 @@ export function Header({ title }: { title?: string }) {
       <MobileMenuButton />
 
       {title && (
-        <h1 className="text-lg font-normal text-gmail-text hidden sm:block min-w-[120px]">
-          {title}
-        </h1>
+        <h1 className="text-lg font-normal text-gmail-text hidden sm:block min-w-[120px]">{title}</h1>
       )}
 
       <div className="flex-1 max-w-2xl mx-auto">
@@ -40,19 +39,15 @@ export function Header({ title }: { title?: string }) {
       </div>
 
       <div className="flex items-center gap-1">
-        <button className="p-2 rounded-full hover:bg-gmail-hover hidden sm:block">
+        <Link href="/settings" className="p-2 rounded-full hover:bg-gmail-hover hidden sm:block" title="Settings">
           <Settings className="w-5 h-5 text-gmail-text-secondary" />
-        </button>
+        </Link>
         {user && (
           <>
             <div className="w-8 h-8 rounded-full bg-gmail-blue text-white flex items-center justify-center text-sm font-medium sm:hidden">
               {(user.displayName || user.email || "?")[0].toUpperCase()}
             </div>
-            <button
-              onClick={handleLogout}
-              className="p-2 rounded-full hover:bg-gmail-hover"
-              title="Sign out"
-            >
+            <button onClick={handleLogout} className="p-2 rounded-full hover:bg-gmail-hover" title="Sign out">
               <LogOut className="w-5 h-5 text-gmail-text-secondary" />
             </button>
           </>

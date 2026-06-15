@@ -1,8 +1,8 @@
-import {
-  SESClient,
-  SendEmailCommand,
-  SendRawEmailCommand,
-} from "@aws-sdk/client-ses";
+import { SESClient, SendRawEmailCommand } from "@aws-sdk/client-ses";
+import { buildMimeMessage, getAllRecipients } from "@/lib/email/mime";
+import { loadAttachmentsForMime } from "@/lib/email/attachment-loader";
+import type { SenderIdentity } from "@/lib/email/sender";
+import type { EmailAttachment } from "@/types";
 
 const sesClient = new SESClient({
   region: process.env.AWS_REGION || "us-east-1",
@@ -13,49 +13,43 @@ const sesClient = new SESClient({
 });
 
 export interface SendEmailOptions {
-  from: string;
+  sender: SenderIdentity;
   to: string[];
   cc?: string[];
   bcc?: string[];
   subject: string;
   html: string;
   text?: string;
+  inReplyTo?: string;
+  references?: string;
+  attachments?: EmailAttachment[];
 }
 
 export async function sendEmailViaSES(options: SendEmailOptions) {
-  const { from, to, cc = [], bcc = [], subject, html, text } = options;
+  const {
+    sender, to, cc = [], bcc = [], subject, html, text,
+    inReplyTo, references, attachments = [],
+  } = options;
 
-  const command = new SendEmailCommand({
-    Source: from,
-    Destination: {
-      ToAddresses: to,
-      CcAddresses: cc.length ? cc : undefined,
-      BccAddresses: bcc.length ? bcc : undefined,
-    },
-    Message: {
-      Subject: { Data: subject, Charset: "UTF-8" },
-      Body: {
-        Html: { Data: html, Charset: "UTF-8" },
-        Text: { Data: text || html.replace(/<[^>]*>/g, ""), Charset: "UTF-8" },
-      },
-    },
+  if (!to.length) throw new Error("At least one recipient is required");
+
+  const mimeAttachments = attachments.length
+    ? await loadAttachmentsForMime(attachments)
+    : [];
+
+  const { raw, messageId } = buildMimeMessage({
+    sender, to, cc, bcc, subject, html, text,
+    inReplyTo, references,
+    attachments: mimeAttachments,
   });
 
-  const result = await sesClient.send(command);
-  return { messageId: result.MessageId };
-}
-
-export async function sendRawEmailViaSES(
-  from: string,
-  to: string[],
-  rawMessage: string
-) {
   const command = new SendRawEmailCommand({
-    Source: from,
-    Destinations: to,
-    RawMessage: { Data: Buffer.from(rawMessage) },
+    Source: sender.email,
+    Destinations: getAllRecipients(to, cc, bcc),
+    RawMessage: { Data: Buffer.from(raw) },
+    ConfigurationSetName: process.env.AWS_SES_CONFIGURATION_SET || undefined,
   });
 
   const result = await sesClient.send(command);
-  return { messageId: result.MessageId };
+  return { messageId: result.MessageId, mimeMessageId: messageId };
 }
