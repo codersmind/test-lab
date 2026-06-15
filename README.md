@@ -11,6 +11,8 @@ A responsive Gmail-style web app built with **Next.js**, using **AWS SES** for e
 - **Auth** – Admin-provisioned accounts only (`some@mydomain.com`); no public sign-up
 - **Admin panel** – Create users, reset passwords, enable/disable accounts
 - **Inbound mail** – Receive from Gmail/external senders into inbox (AWS SES + S3 + SNS)
+- **PWA** – Install on mobile and desktop; offline app shell caching
+- **Push notifications** – FCM alerts for new mail (background + foreground)
 - **Responsive** – Mobile sidebar, split-pane mail on desktop
 
 ## Tech Stack
@@ -20,7 +22,7 @@ A responsive Gmail-style web app built with **Next.js**, using **AWS SES** for e
 | Frontend | Next.js 16, React, Tailwind CSS |
 | Auth & DB | Firebase Auth, Firestore |
 | Email | AWS SES |
-| Push | Firebase Cloud Messaging (FCM) |
+| Push & PWA | Firebase Cloud Messaging (FCM), Serwist service worker |
 
 ## Quick start
 

@@ -22,7 +22,7 @@ Honest comparison after the professional upgrade pass.
 | Email signature | Yes | Yes (`/settings`) |
 | Contacts | Yes | Yes |
 | Calendar | Yes | Basic month view |
-| Push notifications | Yes | Yes (FCM) |
+| PWA install & push | Yes | Yes (Serwist + FCM) |
 | Per-user From address | Yes | Yes (`john@mycompany.com`) |
 | Receive external mail | Yes | Yes (SES inbound → inbox) |
 | Attachments (send/receive) | Yes | Yes (up to 5 files, 5 MB each) |

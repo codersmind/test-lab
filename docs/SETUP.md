@@ -624,22 +624,39 @@ SES also needs permission to write to S3 (AWS usually prompts when creating the 
 2. **Web configuration** → **Generate key pair**
 3. Copy to `NEXT_PUBLIC_FIREBASE_VAPID_KEY`
 
-### Step 9.2 — Service worker
+### Step 9.2 — PWA service worker
 
-The file `public/firebase-messaging-sw.js` handles background notifications.
+MailBox ships as a **Progressive Web App** (installable on mobile and desktop).
 
-For production, you may need to inject Firebase config into the service worker. The app registers FCM when users sign in.
+- `src/app/sw.ts` — unified service worker (offline caching + FCM push)
+- `src/app/manifest.ts` — web app manifest (icons, shortcuts, theme)
+- `public/icons/` — PNG icons generated at build time
+
+The service worker is built automatically during `npm run build` (uses webpack for Serwist compatibility).
 
 ### Step 9.3 — Browser permission
 
-Users must allow notifications when prompted. Notifications fire when:
+Users are prompted to enable notifications after sign-in, or from **Settings → App & notifications**.
 
+Notifications fire when:
+
+- A new email arrives in the inbox (inbound)
 - An email is sent successfully
 - A scheduled email is delivered
 
-### Step 9.4 — HTTPS requirement
+### Step 9.4 — Install the app
 
-FCM push requires **HTTPS** in production. `localhost` works for development.
+**Desktop (Chrome/Edge):** click the install banner or use the browser menu → **Install MailBox**.
+
+**Mobile (Android):** tap **Install** in the banner or **Add to Home Screen** from the browser menu.
+
+**iOS (Safari):** Share → **Add to Home Screen** (install prompt API is not supported on iOS).
+
+### Step 9.5 — HTTPS requirement
+
+FCM push and PWA install require **HTTPS** in production. `localhost` works for development.
+
+> **Note:** The service worker is disabled during `npm run dev`. Test PWA install and push with `npm run build && npm start`.
 
 ---
 

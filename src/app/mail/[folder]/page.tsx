@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { AuthGuard } from "@/components/auth/AuthGuard";
 import { AppShell } from "@/components/layout/AppShell";
 import { MailPage } from "@/components/mail/MailPage";
@@ -23,7 +24,9 @@ export default async function FolderPage({
   return (
     <AuthGuard>
       <AppShell title={titles[folder] || "Mail"}>
-        <MailPage folder={mailFolder} />
+        <Suspense fallback={<div className="flex justify-center py-12"><div className="animate-spin w-8 h-8 border-2 border-gmail-blue border-t-transparent rounded-full" /></div>}>
+          <MailPage folder={mailFolder} />
+        </Suspense>
       </AppShell>
     </AuthGuard>
   );
